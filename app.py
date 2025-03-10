@@ -69,7 +69,14 @@ savings_return_rate = st.sidebar.slider(
 # Mortgage parameters
 st.sidebar.header('Mortgage Parameters')
 loan_amount = st.sidebar.number_input('Loan Amount (NOK)', value=2000000, step=10000)
-loan_term_years = 30
+loan_term_years = st.sidebar.slider(
+    'Loan Term (Years)',
+    min_value=5,
+    max_value=40,
+    value=30,
+    step=1,
+    help='Number of years to pay off the mortgage'
+)
 interest_rate = st.sidebar.slider('Interest Rate (%)', min_value=2.0, max_value=10.0, value=5.79, step=0.01)
 
 # Calculate monthly mortgage payment using the amortization formula
