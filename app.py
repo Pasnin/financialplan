@@ -1,7 +1,6 @@
 import streamlit as st
 import polars as pl
 import plotly.graph_objects as go
-import numpy as np
 
 # Set page configuration
 st.set_page_config(
