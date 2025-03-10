@@ -14,8 +14,13 @@ st.write('Visualize your salary growth, mortgage payments, and savings potential
 
 # Sidebar with sliders for inputs
 st.sidebar.header('Salary Parameters')
-base_salary = 675000  # NOK
-st.sidebar.write(f'Base Salary: {base_salary:,} NOK')
+base_salary = st.sidebar.number_input(
+    'Base Salary (NOK)',
+    min_value=300000,
+    max_value=2000000,
+    value=700000,
+    step=10000
+)
 
 annual_increase = st.sidebar.slider(
     'Annual Salary Increase (%)',
@@ -86,7 +91,7 @@ st.sidebar.write(f'Monthly Payment: {monthly_payment:,.0f} NOK')
 
 # Budget parameters
 st.sidebar.header('Monthly Budget Parameters')
-joint_dept = st.sidebar.slider('joint_dept (Building Fees) (NOK/month)', min_value=0, max_value=10000, value=2750, step=50)
+joint_dept = st.sidebar.slider('Joint Dept (Building Fees) (NOK/month)', min_value=0, max_value=10000, value=2750, step=50)
 groceries = st.sidebar.slider('Groceries (NOK/month)', min_value=0, max_value=10000, value=5000, step=100)
 utilities = st.sidebar.slider('Utilities (NOK/month)', min_value=0, max_value=5000, value=2000, step=100)
 transportation = st.sidebar.slider('Transportation (NOK/month)', min_value=0, max_value=5000, value=1500, step=100)
