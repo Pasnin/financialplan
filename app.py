@@ -18,8 +18,8 @@ st.sidebar.header('Salary Parameters')
 base_salary = st.sidebar.number_input(
     'Base Salary (NOK)',
     min_value=300000,
-    max_value=2000000,
-    value=700000,
+    max_value=10000000,
+    value=500000,
     step=10000
 )
 
@@ -43,7 +43,7 @@ income_type = st.sidebar.selectbox(
 initial_wealth = st.sidebar.number_input(
     'Initial Wealth (NOK)',
     min_value=0,
-    max_value=50000000,
+    max_value=10000000,
     value=1000000,
     step=100000,
     help='Total wealth excluding loans and mortgage'
@@ -52,7 +52,7 @@ initial_wealth = st.sidebar.number_input(
 primary_home_value = st.sidebar.number_input(
     'Primary Home Value (NOK)',
     min_value=0,
-    max_value=50000000,
+    max_value=10000000,
     value=4000000,
     step=100000,
     help='Market value of your primary residence'
@@ -124,7 +124,7 @@ loan_term_years = st.sidebar.slider(
     step=1,
     help='Number of years to pay off the mortgage'
 )
-interest_rate = st.sidebar.slider('Interest Rate (%)', min_value=2.0, max_value=10.0, value=5.79, step=0.01)
+interest_rate = st.sidebar.slider('Interest Rate (%)', min_value=2.0, max_value=10.0, value=5.5, step=0.01)
 
 # Calculate monthly mortgage payment using the amortization formula
 def calculate_monthly_payment(principal, annual_rate, term_years):
