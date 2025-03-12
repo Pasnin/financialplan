@@ -1,6 +1,7 @@
 import streamlit as st
 import polars as pl
 import plotly.graph_objects as go
+from taxes import calculate_norwegian_tax
 
 # Set page configuration
 st.set_page_config(
@@ -10,7 +11,7 @@ st.set_page_config(
 
 # App title and description
 st.title('Income, Mortgage and Savings Projection')
-st.write('Visualize your salary growth, mortgage payments, and savings potential over time')
+st.write('Visualize your salary growth, mortgage payments, savings potential and taxes over time')
 
 # Sidebar with sliders for inputs
 st.sidebar.header('Salary Parameters')
@@ -30,12 +31,58 @@ annual_increase = st.sidebar.slider(
     step=0.1
 )
 
-tax_rate = st.sidebar.slider(
-    'Tax Rate (%)',
-    min_value=10.0,
-    max_value=50.0,
-    value=21.0,
-    step=0.1
+# Tax Parameters
+st.sidebar.header('Tax Parameters')
+income_type = st.sidebar.selectbox(
+    'Income Type',
+    options=['wage', 'self_employment', 'pension'],
+    index=0,
+    help='Type of income affects social security contributions'
+)
+
+initial_wealth = st.sidebar.number_input(
+    'Initial Wealth (NOK)',
+    min_value=0,
+    max_value=50000000,
+    value=1000000,
+    step=100000,
+    help='Total wealth excluding loans and mortgage'
+)
+
+primary_home_value = st.sidebar.number_input(
+    'Primary Home Value (NOK)',
+    min_value=0,
+    max_value=50000000,
+    value=4000000,
+    step=100000,
+    help='Market value of your primary residence'
+)
+
+other_loans = st.sidebar.number_input(
+    'Other Loans (NOK)',
+    min_value=0,
+    max_value=10000000,
+    value=0,
+    step=10000,
+    help='Non-mortgage loans'
+)
+
+bank_balance = st.sidebar.number_input(
+    'Bank Balance (NOK)',
+    min_value=0,
+    max_value=10000000,
+    value=200000,
+    step=10000,
+    help='Cash in bank accounts'
+)
+
+other_loans_interest_rate = st.sidebar.slider(
+    'Other Loans Interest Rate (%)',
+    min_value=0.0,
+    max_value=15.0,
+    value=6.0,
+    step=0.1,
+    help='Annual interest rate on non-mortgage loans'
 )
 
 # Economic parameters
@@ -162,6 +209,7 @@ current_expenses = {
     'entertainment': entertainment,
     'other_expenses': other_expenses
 }
+current_wealth = initial_wealth
 
 # Calculate mortgage data
 mortgage_schedule = calculate_mortgage_schedule(loan_amount, interest_rate, loan_term_years)
@@ -203,9 +251,43 @@ mortgage_yearly = mortgage_yearly.fill_null(0)
 # Generate financial projections year by year
 cumulative_savings = 0
 for year in years:
+    # Use current year for tax calculations (limit to 2025 as max year supported)
+    tax_year = min(2025, 2024 + year)  # Use 2024 or 2025 depending on the year
+    
     # Calculate salary for this year
     gross_salary = current_salary
-    net_salary = gross_salary * (1 - tax_rate/100)
+    
+    # Calculate total remaining mortgage
+    if year <= len(mortgage_yearly):
+        mortgage_row = mortgage_yearly.filter(pl.col('Year') == year)
+        remaining_mortgage = mortgage_row['Year_End_Balance'][0]
+    else:
+        remaining_mortgage = 0
+    
+    # Calculate wealth appreciation (simple approach - increases with savings plus some appreciation)
+    if year > 1:
+        current_wealth += financial_data[-1]['Annual_Savings'] * (1 + savings_return_rate/100)
+    
+    # Calculate Norwegian taxes
+    tax_result = calculate_norwegian_tax(
+        income=gross_salary,
+        wealth=current_wealth,
+        loans=other_loans,
+        mortgage=remaining_mortgage,
+        year=tax_year,
+        primary_home_value=primary_home_value,
+        bank_balance=bank_balance,
+        income_type=income_type,
+        mortgage_interest_rate=interest_rate/100,
+        other_loans_interest_rate=other_loans_interest_rate/100
+    )
+    
+    # Extract tax information
+    total_tax = tax_result['total_tax']
+    effective_tax_rate = tax_result['effective_tax_rate']
+    
+    # Calculate net salary using the calculated tax rate
+    net_salary = gross_salary * (1 - effective_tax_rate)
     
     # Calculate monthly values
     gross_monthly = gross_salary / 12
@@ -300,7 +382,16 @@ for year in years:
         'Real_Monthly_Income': real_net_monthly,
         'Real_Monthly_Expenses': real_monthly_expenses,
         'Real_Monthly_Mortgage': real_monthly_mortgage,
-        'Real_Monthly_Savings': real_monthly_savings
+        'Real_Monthly_Savings': real_monthly_savings,
+        'Total_Tax': total_tax,
+        'Effective_Tax_Rate': effective_tax_rate,
+        'Income_Tax': tax_result['tax_components'].get('income_tax', 0),
+        'Bracket_Tax': tax_result['tax_components'].get('bracket_tax', 0),
+        'Social_Security': tax_result['tax_components'].get('social_security', 0),
+        'Interest_Deduction': tax_result['tax_components'].get('interest_deduction', 0),
+        'Municipal_Wealth_Tax': tax_result['tax_components'].get('municipal_wealth_tax', 0),
+        'State_Wealth_Tax': tax_result['tax_components'].get('state_wealth_tax', 0),
+        'Current_Wealth': current_wealth
     })
     
     # Update salary for next year
@@ -311,7 +402,7 @@ df = pl.DataFrame(financial_data)
 
 # Display data in tabs
 st.subheader('Financial Projections Over 30 Years')
-tabs = st.tabs(['Overview', 'Income', 'Expenses', 'Mortgage', 'Savings', 'Inflation Impact'])
+tabs = st.tabs(['Overview', 'Income', 'Expenses', 'Mortgage', 'Savings', 'Inflation Impact', 'Taxes'])
 
 with tabs[0]:
     # Show key metrics for the first year
@@ -402,7 +493,8 @@ with tabs[0]:
         'Monthly_Mortgage', 
         'Monthly_Savings',
         'Remaining_Balance',
-        'Cumulative_Savings'
+        'Cumulative_Savings',
+        'Effective_Tax_Rate'
     ])
     
     st.dataframe(summary_df.with_columns([
@@ -411,7 +503,8 @@ with tabs[0]:
         pl.col('Monthly_Mortgage').round(0),
         pl.col('Monthly_Savings').round(0),
         pl.col('Remaining_Balance').round(0),
-        pl.col('Cumulative_Savings').round(0)
+        pl.col('Cumulative_Savings').round(0),
+        pl.col('Effective_Tax_Rate').mul(100).round(1).alias('Effective_Tax_Rate (%)'),
     ]))
 
 with tabs[1]:
@@ -941,6 +1034,165 @@ with tabs[5]:
     
     st.plotly_chart(fig_inflation, use_container_width=True)
 
+# Add new Tax tab
+with tabs[6]:
+    # Tax visualizations
+    st.write("### Tax Rate Over Time")
+    
+    # Create tax rate visualization
+    fig_tax_rate = go.Figure()
+    
+    # Add effective tax rate
+    fig_tax_rate.add_trace(
+        go.Scatter(
+            x=df['Year'],
+            y=df['Effective_Tax_Rate'] * 100,
+            name='Effective Tax Rate',
+            line=dict(color='red', width=2),
+            hovertemplate='Year %{x}<br>Effective Tax Rate: %{y:.1f}%<extra></extra>'
+        )
+    )
+    
+    # Customize layout
+    fig_tax_rate.update_layout(
+        title='Effective Tax Rate Over Time',
+        xaxis_title='Year',
+        yaxis_title='Tax Rate (%)',
+        hovermode='x unified',
+        height=400
+    )
+    
+    st.plotly_chart(fig_tax_rate, use_container_width=True)
+    
+    # Show tax breakdown
+    st.write("### Tax Breakdown by Component")
+    
+    # Create tax breakdown visualization
+    fig_tax_breakdown = go.Figure()
+    
+    # Add tax components as stacked bars
+    fig_tax_breakdown.add_trace(
+        go.Bar(
+            x=df['Year'],
+            y=df['Income_Tax'],
+            name='Income Tax',
+            hovertemplate='Year %{x}<br>Income Tax: %{y:,.0f} NOK<extra></extra>'
+        )
+    )
+    
+    fig_tax_breakdown.add_trace(
+        go.Bar(
+            x=df['Year'],
+            y=df['Bracket_Tax'],
+            name='Bracket Tax',
+            hovertemplate='Year %{x}<br>Bracket Tax: %{y:,.0f} NOK<extra></extra>'
+        )
+    )
+    
+    fig_tax_breakdown.add_trace(
+        go.Bar(
+            x=df['Year'],
+            y=df['Social_Security'],
+            name='Social Security',
+            hovertemplate='Year %{x}<br>Social Security: %{y:,.0f} NOK<extra></extra>'
+        )
+    )
+    
+    fig_tax_breakdown.add_trace(
+        go.Bar(
+            x=df['Year'],
+            y=df['Municipal_Wealth_Tax'],
+            name='Municipal Wealth Tax',
+            hovertemplate='Year %{x}<br>Municipal Wealth Tax: %{y:,.0f} NOK<extra></extra>'
+        )
+    )
+    
+    fig_tax_breakdown.add_trace(
+        go.Bar(
+            x=df['Year'],
+            y=df['State_Wealth_Tax'],
+            name='State Wealth Tax',
+            hovertemplate='Year %{x}<br>State Wealth Tax: %{y:,.0f} NOK<extra></extra>'
+        )
+    )
+    
+    # Add interest deduction with negative value
+    fig_tax_breakdown.add_trace(
+        go.Bar(
+            x=df['Year'],
+            y=df['Interest_Deduction'],
+            name='Interest Deduction',
+            marker_color='green',
+            hovertemplate='Year %{x}<br>Interest Deduction: %{y:,.0f} NOK<extra></extra>'
+        )
+    )
+    
+    # Customize layout
+    fig_tax_breakdown.update_layout(
+        title='Tax Breakdown by Component',
+        xaxis_title='Year',
+        yaxis_title='NOK',
+        barmode='stack',
+        hovermode='x unified',
+        height=500
+    )
+    
+    st.plotly_chart(fig_tax_breakdown, use_container_width=True)
+    
+    # Show total tax
+    fig_total_tax = go.Figure()
+    
+    fig_total_tax.add_trace(
+        go.Scatter(
+            x=df['Year'],
+            y=df['Total_Tax'],
+            name='Total Tax',
+            line=dict(color='red', width=2),
+            hovertemplate='Year %{x}<br>Total Tax: %{y:,.0f} NOK<extra></extra>'
+        )
+    )
+    
+    # Customize layout
+    fig_total_tax.update_layout(
+        title='Total Tax Over Time',
+        xaxis_title='Year',
+        yaxis_title='NOK',
+        hovermode='x unified',
+        height=400
+    )
+    
+    st.plotly_chart(fig_total_tax, use_container_width=True)
+    
+    # Display tax data
+    st.write("### Tax Data")
+    
+    tax_df = df.select([
+        'Year',
+        'Gross_Salary',
+        'Total_Tax',
+        'Effective_Tax_Rate',
+        'Income_Tax',
+        'Bracket_Tax',
+        'Social_Security',
+        'Interest_Deduction',
+        'Municipal_Wealth_Tax',
+        'State_Wealth_Tax',
+        'Current_Wealth'
+    ])
+    
+    st.dataframe(tax_df.with_columns([
+        pl.col('Gross_Salary').round(0),
+        pl.col('Total_Tax').round(0),
+        pl.col('Effective_Tax_Rate').mul(100).round(1).alias('Effective_Tax_Rate (%)'),
+        pl.col('Income_Tax').round(0),
+        pl.col('Bracket_Tax').round(0),
+        pl.col('Social_Security').round(0),
+        pl.col('Interest_Deduction').round(0),
+        pl.col('Municipal_Wealth_Tax').round(0),
+        pl.col('State_Wealth_Tax').round(0),
+        pl.col('Current_Wealth').round(0)
+    ]))
+
 # Summary metrics
 st.subheader('Financial Summary')
 
@@ -968,11 +1220,10 @@ with col3:
     )
     
 with col4:
-    savings_ratio = (df["Monthly_Savings"][0] / df["Net_Monthly"][0]) * 100
     st.metric(
-        'Savings Rate', 
-        f'{savings_ratio:.1f}%',
-        help='Percentage of net income that can be saved'
+        'Effective Tax Rate', 
+        f'{df["Effective_Tax_Rate"][0]*100:.1f}%',
+        help='Calculated based on Norwegian tax system'
     )
 
 # Second row - End of period projection (Year 30)
