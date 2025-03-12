@@ -2,8 +2,6 @@
 
 An interactive financial planning application that helps you visualize your long-term financial future, including salary growth, mortgage payments, expenses, and savings potential.
 
-![Financial Planning App Screenshot](https://github.com/Pasnin/financialplan/raw/main/screenshot.png)
-
 ## Features
 
 ### Income Projection
@@ -97,7 +95,6 @@ This application is built with:
 - **Streamlit**: For the interactive web interface
 - **Polars**: For efficient data manipulation
 - **Plotly**: For interactive visualizations
-- **NumPy**: For numerical calculations
 
 ## Contributing
 
